@@ -384,6 +384,98 @@ nlohmann::json procToJson(const Proc &p) {
     return j;
 }
 
+bool isShizukuEnvironment() {
+    const char *shizukuFlag = std::getenv("SHIZUKU");
+    return shizukuFlag != nullptr || getuid() == 2000;
+}
+
+std::string trimWhitespace(const std::string &value) {
+    const char *whitespace = " \t\r\n";
+    size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+    size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+bool shouldFallbackToPs(const std::vector<Proc> &procs) {
+    size_t total = procs.size();
+    if (total < 5) {
+        return false;
+    }
+    size_t emptyCmdLines = 0;
+    for (const auto &proc : procs) {
+        if (proc.cmdLine.empty()) {
+            emptyCmdLines++;
+        }
+    }
+    double emptyRatio = static_cast<double>(emptyCmdLines) / static_cast<double>(total);
+    return emptyRatio >= 0.7;
+}
+
+Proc procFromPsFields(int pid, const std::string &name, int uid, int parentPid, const std::string &state) {
+    Proc p{};
+    p.pid = pid;
+    p.name = name;
+    p.uid = uid;
+    p.parentPid = parentPid;
+    p.state = state;
+    p.cmdLine = name;
+    p.nice = 0;
+    p.cpuUsage = 0.0f;
+    p.isForeground = false;
+    p.memoryUsageKb = 0;
+    p.threads = 0;
+    p.startTime = 0;
+    p.elapsedTime = 0.0f;
+    p.residentSetSizeKb = 0;
+    p.virtualMemoryKb = 0;
+    p.cgroup = "";
+    p.executablePath = "";
+    return p;
+}
+
+std::vector<Proc> collectProcsFromPs() {
+    std::vector<Proc> procs;
+    FILE *pipe = popen("ps -A -o PID,NAME,UID,PPID,STATE", "r");
+    if (!pipe) {
+        log_line("Failed to run ps for fallback process list");
+        return procs;
+    }
+
+    char buffer[512];
+    bool skippedHeader = false;
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        std::string line = trimWhitespace(buffer);
+        if (line.empty()) {
+            continue;
+        }
+        if (!skippedHeader) {
+            skippedHeader = true;
+            if (line.find("PID") != std::string::npos) {
+                continue;
+            }
+        }
+
+        std::istringstream iss(line);
+        int pid = 0;
+        std::string name;
+        int uid = 0;
+        int ppid = 0;
+        std::string state;
+
+        if (!(iss >> pid >> name >> uid >> ppid >> state)) {
+            continue;
+        }
+
+        procs.push_back(procFromPsFields(pid, name, uid, ppid, state));
+    }
+
+    pclose(pipe);
+    return procs;
+}
+
 std::vector<Proc> collectProcs() {
     std::vector<Proc> procs;
     std::vector<int> pids = listPids();
@@ -394,6 +486,14 @@ std::vector<Proc> collectProcs() {
             procs.push_back(readProc(pid));
         } catch (...) {
 
+        }
+    }
+
+    if (shouldFallbackToPs(procs) && isShizukuEnvironment()) {
+        log_line("Procfs data incomplete; using ps fallback list");
+        std::vector<Proc> psProcs = collectProcsFromPs();
+        if (!psProcs.empty()) {
+            return psProcs;
         }
     }
 
