@@ -27,6 +27,7 @@ import com.rk.taskmanager.screens.SettingsScreen
 import com.rk.taskmanager.screens.procByPid
 import com.rk.taskmanager.screens.selectedscreen
 import com.rk.taskmanager.screens.cpu.updateCpuGraph
+import com.rk.taskmanager.screens.cpu.cpuTemp
 import com.rk.taskmanager.screens.updateRamAndSwapGraph
 import com.rk.taskmanager.settings.Settings
 import com.rk.taskmanager.ui.theme.TaskManagerTheme
@@ -35,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.lang.ref.WeakReference
@@ -76,6 +78,13 @@ class MainActivity : ComponentActivity() {
                         delay(32)
                     }
 
+                    if (message.startsWith("THERMAL:")) {
+                        val temp = message.removePrefix("THERMAL:")
+                        withContext(Dispatchers.Main) {
+                            cpuTemp = temp
+                        }
+                    }
+
                     if (message.startsWith("SWAP:")) {
                         val parts = message.removePrefix("SWAP:").split(":")
                         if (parts.size == 2) {
@@ -103,6 +112,8 @@ class MainActivity : ComponentActivity() {
                         send_daemon_messages.emit("CPU_PING")
                         delay(16)
                         send_daemon_messages.emit("SWAP_PING")
+                        delay(16)
+                        send_daemon_messages.emit("THERMAL_PING")
                     }
                 }
                 val delayMs = if (selectedscreen.intValue == 0 && MainActivity.instance?.navControllerRef?.get()?.currentDestination?.route == SettingsRoutes.Home.route) {
