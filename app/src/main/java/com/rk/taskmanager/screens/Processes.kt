@@ -3,21 +3,28 @@ package com.rk.taskmanager.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -47,6 +54,7 @@ import com.rk.components.compose.preferences.base.PreferenceTemplate
 import com.rk.taskmanager.ProcessUiModel
 import com.rk.taskmanager.ProcessViewModel
 import com.rk.taskmanager.R
+import com.rk.taskmanager.SortMode
 import com.rk.taskmanager.SettingsRoutes
 import com.rk.taskmanager.settings.Settings
 import com.rk.taskmanager.strings
@@ -122,38 +130,103 @@ fun Processes(
             val listState = rememberLazyListState()
 
             val filteredProcesses by viewModel.filteredProcesses.collectAsState()
+            val sortMode by viewModel.sortMode.collectAsState()
 
-            if (filteredProcesses.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    state = listState
-                ) {
-                    items(filteredProcesses, key = { it.proc.pid }) { uiProc ->
-                        ProcessItem(modifier, uiProc, navController = navController, viewModel)
+            Column(modifier = Modifier.fillMaxSize()) {
+                ProcessSortRow(
+                    sortMode = sortMode,
+                    onSortSelected = { mode ->
+                        Settings.processSortMode = mode.id
+                        viewModel.setSortMode(mode)
                     }
-
-                    item {
-                        Spacer(modifier = Modifier.padding(bottom = 32.dp))
-                    }
-                }
-            } else {
-                val messages = listOf(
-                    "¯\\_(ツ)_/¯",
-                    "(¬_¬ )",
-                    "(╯°□°）╯︵ ┻━┻",
-                    "(>_<)",
-                    "Bruh, check the filter",
-                    "(ಠ_ಠ)",
-                    "(•_•) <(no data)",
-                    "(o_O)"
                 )
 
-                val message = rememberSaveable { messages.random() }
-                Text(message)
-            }
+                if (filteredProcesses.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState
+                    ) {
+                        items(filteredProcesses, key = { it.proc.pid }) { uiProc ->
+                            ProcessItem(modifier, uiProc, navController = navController, viewModel)
+                        }
 
+                        item {
+                            Spacer(modifier = Modifier.padding(bottom = 32.dp))
+                        }
+                    }
+                } else {
+                    val messages = listOf(
+                        "¯\\_(ツ)_/¯",
+                        "(¬_¬ )",
+                        "(╯°□°）╯︵ ┻━┻",
+                        "(>_<)",
+                        "Bruh, check the filter",
+                        "(ಠ_ಠ)",
+                        "(•_•) <(no data)",
+                        "(o_O)"
+                    )
+
+                    val message = rememberSaveable { messages.random() }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(message)
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun ProcessSortRow(
+    sortMode: SortMode,
+    onSortSelected: (SortMode) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SortChip(
+            label = "CPU",
+            selected = sortMode == SortMode.CPU,
+            onClick = { onSortSelected(SortMode.CPU) }
+        )
+        SortChip(
+            label = "RAM",
+            selected = sortMode == SortMode.RAM,
+            onClick = { onSortSelected(SortMode.RAM) }
+        )
+        SortChip(
+            label = "PID",
+            selected = sortMode == SortMode.PID,
+            onClick = { onSortSelected(SortMode.PID) }
+        )
+        SortChip(
+            label = "Name",
+            selected = sortMode == SortMode.NAME,
+            onClick = { onSortSelected(SortMode.NAME) }
+        )
+    }
+}
+
+@Composable
+private fun SortChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) }
+    )
 }
 
 const val textLimit = 40
