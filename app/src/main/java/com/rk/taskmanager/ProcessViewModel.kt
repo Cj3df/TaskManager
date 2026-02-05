@@ -41,6 +41,17 @@ data class ProcessUiModel(
     val killed: MutableState<Boolean> = mutableStateOf(false)
 )
 
+enum class SortMode(val id: Int) {
+    CPU(0),
+    RAM(1),
+    PID(2),
+    NAME(3);
+
+    companion object {
+        fun fromId(id: Int): SortMode = entries.firstOrNull { it.id == id } ?: NAME
+    }
+}
+
 @OptIn(FlowPreview::class)
 class ProcessViewModel : ViewModel() {
     private val _uiProcesses = MutableStateFlow<List<ProcessUiModel>>(emptyList())
@@ -48,10 +59,12 @@ class ProcessViewModel : ViewModel() {
     private val _showUserApps = MutableStateFlow(Settings.showUserApps)
     private val _showSystemApps = MutableStateFlow(Settings.showSystemApps)
     private val _showLinuxProcess = MutableStateFlow(Settings.showLinuxProcess)
+    private val _sortMode = MutableStateFlow(SortMode.fromId(Settings.processSortMode))
 
     val showUserApps = _showUserApps.asStateFlow()
     val showSystemApps = _showSystemApps.asStateFlow()
     val showLinuxProcess = _showLinuxProcess.asStateFlow()
+    val sortMode = _sortMode.asStateFlow()
     private val _threadCount = MutableStateFlow(0)
     val threadCount = _threadCount.asStateFlow()
 
@@ -62,15 +75,22 @@ class ProcessViewModel : ViewModel() {
         _uiProcesses,
         _showUserApps,
         _showSystemApps,
-        _showLinuxProcess
-    ) { processes, showUser, showSystem, showLinux ->
-        processes.filter { process ->
+        _showLinuxProcess,
+        _sortMode
+    ) { processes, showUser, showSystem, showLinux, sortMode ->
+        val filtered = processes.filter { process ->
             when {
                 process.isApp && process.isUserApp && showUser -> true
                 process.isApp && process.isSystemApp && showSystem -> true
                 process.isApp.not() && showLinux -> true
                 else -> false
             }
+        }
+        when (sortMode) {
+            SortMode.CPU -> filtered.sortedByDescending { it.proc.cpuUsage }
+            SortMode.RAM -> filtered.sortedByDescending { it.proc.memoryUsageKb }
+            SortMode.PID -> filtered.sortedBy { it.proc.pid }
+            SortMode.NAME -> filtered.sortedBy { it.name.lowercase() }
         }
     }.stateIn(
         scope = viewModelScope,
@@ -113,6 +133,10 @@ class ProcessViewModel : ViewModel() {
 
     fun setShowLinuxProcess(value: Boolean) {
         _showLinuxProcess.value = value
+    }
+
+    fun setSortMode(value: SortMode) {
+        _sortMode.value = value
     }
 
     val uiProcesses = _uiProcesses.asStateFlow()

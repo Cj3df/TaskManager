@@ -52,6 +52,13 @@ object Settings {
             default = false
         )
         set(value) = Preference.setBoolean(key = "showLinuxProcess",value)
+
+    var processSortMode
+        get() = Preference.getInt(
+            key = "processSortMode",
+            default = 3
+        )
+        set(value) = Preference.setInt(key = "processSortMode",value)
 }
 
 object Preference {
