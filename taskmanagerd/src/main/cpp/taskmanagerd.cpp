@@ -26,6 +26,7 @@
 #include <regex>
 #include <sys/epoll.h>
 #include <limits.h>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -501,31 +502,51 @@ std::vector<Proc> collectProcs() {
 }
 
 std::string getSwapUsageBytes() {
-    std::ifstream meminfo("/proc/meminfo");
-    if (!meminfo.is_open()) {
-        return "SWAP:0:0";
-    }
-
     long swapTotalKB = 0;
     long swapFreeKB = 0;
-    std::string line;
 
-    while (std::getline(meminfo, line)) {
-        std::istringstream iss(line);
-        std::string key;
-        long value;
-        std::string unit;
+    std::ifstream meminfo("/proc/meminfo");
+    if (meminfo.is_open()) {
+        std::string line;
+        while (std::getline(meminfo, line)) {
+            std::istringstream iss(line);
+            std::string key;
+            long value;
+            std::string unit;
 
-        iss >> key >> value >> unit;
+            iss >> key >> value >> unit;
 
-        if (key == "SwapTotal:") {
-            swapTotalKB = value;
-        } else if (key == "SwapFree:") {
-            swapFreeKB = value;
+            if (key == "SwapTotal:") {
+                swapTotalKB = value;
+            } else if (key == "SwapFree:") {
+                swapFreeKB = value;
+            }
+
+            if (swapTotalKB != 0 && swapFreeKB != 0) {
+                break;
+            }
         }
+    }
 
-        if (swapTotalKB != 0 && swapFreeKB != 0) {
-            break;
+    if (swapTotalKB == 0) {
+        std::ifstream swaps("/proc/swaps");
+        if (swaps.is_open()) {
+            std::string line;
+            std::getline(swaps, line); // Skip header
+            long total = 0;
+            long used = 0;
+            while (std::getline(swaps, line)) {
+                std::istringstream iss(line);
+                std::string dummy;
+                long s = 0, u = 0;
+                if (iss >> dummy >> dummy >> s >> u) {
+                    total += s;
+                    used += u;
+                }
+            }
+            if (total > 0) {
+                return "SWAP:" + std::to_string(used * 1024) + ":" + std::to_string(total * 1024);
+            }
         }
     }
 
@@ -533,6 +554,42 @@ std::string getSwapUsageBytes() {
     long swapTotalBytes = swapTotalKB * 1024;
 
     return "SWAP:" + std::to_string(swapUsedBytes) + ":" + std::to_string(swapTotalBytes);
+}
+
+std::string getThermalInfo() {
+    int maxTemp = -1000;
+    bool found = false;
+
+    if (fs::exists("/sys/class/thermal")) {
+        try {
+            for (const auto &entry : fs::directory_iterator("/sys/class/thermal")) {
+                std::string name = entry.path().filename();
+                if (name.rfind("thermal_zone", 0) == 0) {
+                     std::ifstream tempFile(entry.path() / "temp");
+                     if (tempFile.is_open()) {
+                         int temp;
+                         if (tempFile >> temp) {
+                             if (temp > 1000) temp /= 1000;
+
+                             if (temp > -30 && temp < 200) {
+                                 if (!found || temp > maxTemp) {
+                                     maxTemp = temp;
+                                     found = true;
+                                 }
+                             }
+                         }
+                     }
+                }
+            }
+        } catch (...) {
+            // Ignore errors
+        }
+    }
+
+    if (found) {
+        return "THERMAL:" + std::to_string(maxTemp);
+    }
+    return "THERMAL:N/A";
 }
 
 void processCommand(int sock, const std::string &received) {
@@ -633,7 +690,11 @@ void processCommand(int sock, const std::string &received) {
         std::string cpuUsage = getSwapUsageBytes();
         log_line(cpuUsage);
         send_msg(sock, cpuUsage);
-    }  else if (cmd == "PING_PID_CPU") {
+    } else if (cmd == "THERMAL_PING") {
+        std::string thermal = getThermalInfo();
+        log_line(thermal);
+        send_msg(sock, thermal);
+    } else if (cmd == "PING_PID_CPU") {
         int arg = -1;
         if (colonPos != std::string::npos) {
             try {

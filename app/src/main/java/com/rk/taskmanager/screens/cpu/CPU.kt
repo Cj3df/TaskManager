@@ -79,6 +79,7 @@ val cpuYValues = ArrayDeque<Int>(MAX_GRAPH_POINTS).apply { repeat(MAX_GRAPH_POIN
 val CpuModelProducer = CartesianChartModelProducer()
 private val cpuUsageAtomic = java.util.concurrent.atomic.AtomicInteger(0)
 var cpuUsage by mutableIntStateOf(0)
+var cpuTemp by mutableStateOf("N/A")
 
 suspend fun updateCpuGraph(usage: Int) {
     withContext(Dispatchers.Main){
@@ -101,7 +102,6 @@ fun CPU(modifier: Modifier = Modifier,viewModel: ProcessViewModel) {
     val lineColor = MaterialTheme.colorScheme.primary
 
     // Real-time data that updates periodically
-    var temperature by remember { mutableStateOf<String?>(null) }
     var uptime by remember { mutableStateOf("") }
 
     // Static CPU info
@@ -110,7 +110,6 @@ fun CPU(modifier: Modifier = Modifier,viewModel: ProcessViewModel) {
     // Update real-time data every 2 seconds
     LaunchedEffect(Unit) {
         while (isActive) {
-            temperature = CpuInfoReader.getCpuTemperatureCelsius()
             uptime = CpuInfoReader.getUptimeFormatted()
             delay(2000)
         }
@@ -222,7 +221,7 @@ fun CPU(modifier: Modifier = Modifier,viewModel: ProcessViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            InfoItem("Temperature", "$temperature°C")
+                            InfoItem("Temperature", "$cpuTemp°C")
                         }
                     }
                 }
